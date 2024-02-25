@@ -2,6 +2,7 @@ from osuapi.osuapi import OsuApi
 from pypresence import Presence
 from config import config
 from json import loads
+from time import sleep
 from time import time
 
 import subprocess
@@ -162,7 +163,10 @@ def get_activity(data):
             })
         
         case _:
-            print("Unknown state, ignoring")
+            activity.update({
+                "details": "???",
+                "state": map_name(map["metadata"])
+            })
 
     return activity
 
@@ -170,7 +174,7 @@ def main():
     next_time = time()
     activity = {}
 
-    def on_message(_, message):
+    def on_message(_ws, message):
         nonlocal next_time
         if time() < next_time:
             return
@@ -182,19 +186,21 @@ def main():
         new_activity = get_activity(data)
         if new_activity != activity:
             rpc.update(
-                state = new_activity["state"],
-                details = new_activity["details"],
+                state = new_activity.get("state", ""),
+                details = new_activity.get("details", ""),
                 large_image = new_activity["assets"]["large_image"],
                 large_text = new_activity["assets"]["large_text"],
                 small_image = new_activity["assets"]["small_image"],
                 small_text = new_activity["assets"]["small_text"],
-                buttons = new_activity["buttons"],
+                buttons = new_activity.get("buttons", []),
                 start = start_time
             )
             activity = new_activity
 
     if config["gosumemory_path"] != "":
         subprocess.Popen(config["gosumemory_path"])
+
+    sleep(5)
 
     ws = websocket.WebSocketApp(
         config["ws_url"],
