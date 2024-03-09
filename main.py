@@ -19,11 +19,11 @@ api = OsuApi()
 start_time = time()
 
 def get_user(name, mode):
-    user = api.search_user(name)
-    if user is None:
+    u = api.search_user(name)
+    if u is None:
         return None
         
-    return api.get_user(user.id, mode)
+    return api.get_user(u.id, mode)
     
 def user_stats(user):
     score = user.stats.ranked_score
@@ -54,132 +54,141 @@ def map_url(data):
     req = requests.get(url)
     return url if req.status_code == 200 else None
 
-def get_activity(data):
-    state = data["menu"]["state"]
-    map = data["menu"]["bm"]
-    stats = map["stats"]
-    play = data["gameplay"]
-    
-    activity = {
-        "buttons": [],
-        "assets": {
-            "large_image": OSU_LOGO,
-            "large_text": map_name(map["metadata"]),
-            "small_image": OSU_MODES[play["gameMode"]],
-            "small_text": f"Playing osu!{['', 'taiko', 'catch', 'mania'][play['gameMode']]}",
-        }
-    }
-
-    mode = 0
-    gameMode = data["menu"]["gameMode"]
-    modsStr = data['menu']['mods']['str']
-    if gameMode == 0 and "RX" in modsStr:
-        mode = 4
-    elif gameMode == 1 and "RX" in modsStr:
-        mode = 5
-    elif gameMode == 2 and "RX" in modsStr:
-        mode = 6
-
-    user = get_user(config["username"], mode)
-    if user is not None:
-        activity["buttons"].append({
-            "label": user_stats(user),
-            "url": f"https://scosu.net/u/{user.info.id}"
-        })
-
-    match state:
-        case 0 | 3 | 10 | 11 | 19:
-            activity.update({
-                "details": "Main menu",
-                "state": map_name(map["metadata"], diff = False)
-            })
-
-        case 1:
-            activity.update({
-                "details": "Editing a beatmap",
-                "state": map_name(map["metadata"], diff = False)
-            })
-
-        case 4 | 5 | 13:
-            activity.update({
-                "details": f"Song select (+{modsStr})",
-                "state": map_name(map["metadata"])
-            })
-            url = map_url(data)
-            if url is not None:
-                activity["buttons"].append({
-                    "label": map_stats(stats),
-                    "url": url
-                })
-        
-        case 12:
-            activity.update({
-                "details": "In multiplayer",
-                "state": map_name(map["metadata"])
-            })
-        
-        case 2:
-            if play["name"] == config["username"]:
-                activity.update({
-                    "details": f"Playing (+{modsStr}) ▸ {play['accuracy']:.2f}% ({play['hits']['grade']['current']})",
-                    "state": f"{play['score']:,} ▸ {play['combo']['current']:,}x ▸ {play['hits']['0']:,} misses"
-                })
-            else:
-                activity.update({
-                    "details": f"Watching {play['name']} (+{modsStr}) ▸ {play['accuracy']:.2f}% ({play['hits']['grade']['current']})",
-                    "state": f"{play['score']:,} ▸ {play['combo']['current']:,}x ▸ {play['hits']['0']:,} misses"
-                })
-            
-            url = map_url(data)
-            if url is not None:
-                activity["buttons"].append({
-                    "label": map_stats(stats),
-                    "url": url
-                })
-        
-        case 7 | 14 | 17 | 18:
-            if play["name"] == config["username"]:
-                activity.update({
-                    "details": f"Result screen (+{modsStr}) ▸ {play['accuracy']:.2f}% ({play['hits']['grade']['current']})",
-                    "state": f"{play['score']:,} ▸ {play['combo']['max']:,}x ▸ {play['hits']['0']:,} misses"
-                })
-            else:
-                activity.update({
-                    "details": f"Result screen of {play['name']} (+{modsStr}) ▸ {play['accuracy']:.2f}% ({play['hits']['grade']['current']})",
-                    "state": f"{play['score']:,} ▸ {play['combo']['max']:,}x ▸ {play['hits']['0']:,} misses"
-                })
-            
-            url = map_url(data)
-            if url is not None:
-                activity["buttons"].append({
-                    "label": map_stats(stats),
-                    "url": url
-                })
-        
-        case 15:
-            activity.update({
-                "details": "Browsing osu!direct",
-                "state": map_name(map["metadata"])
-            })
-        
-        case _:
-            activity.update({
-                "details": "???",
-                "state": map_name(map["metadata"])
-            })
-
-    return activity
-
 def main():
     next_time = time()
     activity = {}
+    user = None
+    current_mode = -1
+
+    def get_activity(data):
+        nonlocal user, current_mode
+        state = data["menu"]["state"]
+        map = data["menu"]["bm"]
+        stats = map["stats"]
+        play = data["gameplay"]
+        
+        activity = {
+            "buttons": [],
+            "assets": {
+                "large_image": OSU_LOGO,
+                "large_text": map_name(map["metadata"]),
+                "small_image": OSU_MODES[data['menu']['gameMode']],
+                "small_text": f"Playing osu!{['', 'taiko', 'catch', 'mania'][data['menu']['gameMode']]}",
+            }
+        }
+
+        mode = data["menu"]["gameMode"]
+        modsStr = data['menu']['mods']['str']
+        if mode == 0 and "RX" in modsStr:
+            mode = 4
+        elif mode == 1 and "RX" in modsStr:
+            mode = 5
+        elif mode == 2 and "RX" in modsStr:
+            mode = 6
+
+        if user is None or current_mode != mode:
+            user = get_user(config["username"], mode)
+        current_mode = mode
+
+        if user is not None:
+            activity["assets"].update({
+                "large_image": f"https://a.scosu.net/{user.info.id}"
+            })
+            activity["buttons"].append({
+                "label": user_stats(user),
+                "url": f"https://scosu.net/u/{user.info.id}"
+            })
+        else:
+            not_found = True
+
+        match state:
+            case 0 | 3 | 10 | 11 | 19:
+                activity.update({
+                    "details": "Main menu",
+                    "state": map_name(map["metadata"], diff = False)
+                })
+
+            case 1:
+                activity.update({
+                    "details": "Editing a beatmap",
+                    "state": map_name(map["metadata"], diff = False)
+                })
+
+            case 4 | 5 | 13:
+                activity.update({
+                    "details": f"Song select (+{modsStr})",
+                    "state": map_name(map["metadata"])
+                })
+                url = map_url(data)
+                if url is not None:
+                    activity["buttons"].append({
+                        "label": map_stats(stats),
+                        "url": url
+                    })
+            
+            case 12:
+                activity.update({
+                    "details": "In multiplayer",
+                    "state": map_name(map["metadata"])
+                })
+            
+            case 2:
+                if play["name"] == config["username"]:
+                    activity.update({
+                        "details": f"Playing (+{modsStr}) ▸ {play['accuracy']:.2f}% ({play['hits']['grade']['current']})",
+                        "state": f"{play['score']:,} ▸ {play['combo']['current']:,}x ▸ {play['hits']['0']:,} misses"
+                    })
+                else:
+                    activity.update({
+                        "details": f"Watching {play['name']} (+{modsStr}) ▸ {play['accuracy']:.2f}% ({play['hits']['grade']['current']})",
+                        "state": f"{play['score']:,} ▸ {play['combo']['current']:,}x ▸ {play['hits']['0']:,} misses"
+                    })
+                
+                url = map_url(data)
+                if url is not None:
+                    activity["buttons"].append({
+                        "label": map_stats(stats),
+                        "url": url
+                    })
+            
+            case 7 | 14 | 17 | 18:
+                if play["name"] == config["username"]:
+                    activity.update({
+                        "details": f"Result screen (+{modsStr}) ▸ {play['accuracy']:.2f}% ({play['hits']['grade']['current']})",
+                        "state": f"{play['score']:,} ▸ {play['combo']['max']:,}x ▸ {play['hits']['0']:,} misses"
+                    })
+                else:
+                    activity.update({
+                        "details": f"Result screen of {play['name']} (+{modsStr}) ▸ {play['accuracy']:.2f}% ({play['hits']['grade']['current']})",
+                        "state": f"{play['score']:,} ▸ {play['combo']['max']:,}x ▸ {play['hits']['0']:,} misses"
+                    })
+                
+                url = map_url(data)
+                if url is not None:
+                    activity["buttons"].append({
+                        "label": map_stats(stats),
+                        "url": url
+                    })
+            
+            case 15:
+                activity.update({
+                    "details": "Browsing osu!direct",
+                    "state": map_name(map["metadata"])
+                })
+            
+            case _:
+                activity.update({
+                    "details": "???",
+                    "state": map_name(map["metadata"])
+                })
+
+        return activity
 
     def on_message(_ws, message):
-        nonlocal next_time
+        nonlocal next_time, activity
         if time() < next_time:
             return
         
-        nonlocal activity
         next_time = time() + config["cooldown"]
         data = loads(message)
 
