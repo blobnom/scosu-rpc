@@ -5,7 +5,7 @@ from .classes.User import SearchedUser
 from .classes.User import UserFull
 
 class OsuApi:
-	base_url: str = "https://api.scosu.oritsu.net/v1"
+	base_url: str = "https://api.scosu.net/v1"
 	
 	def api(self, endpoint: str) -> dict:
 		req = requests.get(self.base_url + endpoint)
